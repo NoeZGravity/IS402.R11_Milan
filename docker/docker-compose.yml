@@ -1,0 +1,128 @@
+# Federated Learning 5G trên Docker: 1 SuperLink (Cloud) + 20 SuperNode (Edge, mỗi node = 1 trạm phát)
+# Bật:  docker compose up -d --build                       (cả 20 trạm)
+#       docker compose up -d --build superlink supernode-0 supernode-1 supernode-2 supernode-3 supernode-4   (5 trạm)
+x-supernode: &supernode
+  image: fl5g:latest
+  entrypoint: ["flower-supernode"]
+  pull_policy: never        # image tự build, không kéo từ Docker Hub
+  depends_on: [superlink]
+  volumes:
+    - ${FL5G_DATA_HOST}:/data:ro
+  restart: on-failure
+
+services:
+  superlink:
+    build:
+      context: .
+      args:
+        FLWR_VERSION: ${FLWR_VERSION}
+    image: fl5g:latest
+    container_name: superlink
+    entrypoint: ["flower-superlink"]
+    command: ["--insecure"]
+    ports:
+      - "9093:9093"   # flwr run (Control API)
+      - "9092:9092"   # Fleet API (SuperNode kết nối vào)
+    volumes:
+      - ${FL5G_DATA_HOST}:/data:ro
+      - ${FL5G_OUT_HOST}:/results
+
+  supernode-0:
+    <<: *supernode
+    container_name: supernode-0
+    command: ["--insecure", "--superlink", "superlink:9092", "--node-config", "partition-id=0 num-partitions=20"]
+
+  supernode-1:
+    <<: *supernode
+    container_name: supernode-1
+    command: ["--insecure", "--superlink", "superlink:9092", "--node-config", "partition-id=1 num-partitions=20"]
+
+  supernode-2:
+    <<: *supernode
+    container_name: supernode-2
+    command: ["--insecure", "--superlink", "superlink:9092", "--node-config", "partition-id=2 num-partitions=20"]
+
+  supernode-3:
+    <<: *supernode
+    container_name: supernode-3
+    command: ["--insecure", "--superlink", "superlink:9092", "--node-config", "partition-id=3 num-partitions=20"]
+
+  supernode-4:
+    <<: *supernode
+    container_name: supernode-4
+    command: ["--insecure", "--superlink", "superlink:9092", "--node-config", "partition-id=4 num-partitions=20"]
+
+  supernode-5:
+    <<: *supernode
+    container_name: supernode-5
+    command: ["--insecure", "--superlink", "superlink:9092", "--node-config", "partition-id=5 num-partitions=20"]
+
+  supernode-6:
+    <<: *supernode
+    container_name: supernode-6
+    command: ["--insecure", "--superlink", "superlink:9092", "--node-config", "partition-id=6 num-partitions=20"]
+
+  supernode-7:
+    <<: *supernode
+    container_name: supernode-7
+    command: ["--insecure", "--superlink", "superlink:9092", "--node-config", "partition-id=7 num-partitions=20"]
+
+  supernode-8:
+    <<: *supernode
+    container_name: supernode-8
+    command: ["--insecure", "--superlink", "superlink:9092", "--node-config", "partition-id=8 num-partitions=20"]
+
+  supernode-9:
+    <<: *supernode
+    container_name: supernode-9
+    command: ["--insecure", "--superlink", "superlink:9092", "--node-config", "partition-id=9 num-partitions=20"]
+
+  supernode-10:
+    <<: *supernode
+    container_name: supernode-10
+    command: ["--insecure", "--superlink", "superlink:9092", "--node-config", "partition-id=10 num-partitions=20"]
+
+  supernode-11:
+    <<: *supernode
+    container_name: supernode-11
+    command: ["--insecure", "--superlink", "superlink:9092", "--node-config", "partition-id=11 num-partitions=20"]
+
+  supernode-12:
+    <<: *supernode
+    container_name: supernode-12
+    command: ["--insecure", "--superlink", "superlink:9092", "--node-config", "partition-id=12 num-partitions=20"]
+
+  supernode-13:
+    <<: *supernode
+    container_name: supernode-13
+    command: ["--insecure", "--superlink", "superlink:9092", "--node-config", "partition-id=13 num-partitions=20"]
+
+  supernode-14:
+    <<: *supernode
+    container_name: supernode-14
+    command: ["--insecure", "--superlink", "superlink:9092", "--node-config", "partition-id=14 num-partitions=20"]
+
+  supernode-15:
+    <<: *supernode
+    container_name: supernode-15
+    command: ["--insecure", "--superlink", "superlink:9092", "--node-config", "partition-id=15 num-partitions=20"]
+
+  supernode-16:
+    <<: *supernode
+    container_name: supernode-16
+    command: ["--insecure", "--superlink", "superlink:9092", "--node-config", "partition-id=16 num-partitions=20"]
+
+  supernode-17:
+    <<: *supernode
+    container_name: supernode-17
+    command: ["--insecure", "--superlink", "superlink:9092", "--node-config", "partition-id=17 num-partitions=20"]
+
+  supernode-18:
+    <<: *supernode
+    container_name: supernode-18
+    command: ["--insecure", "--superlink", "superlink:9092", "--node-config", "partition-id=18 num-partitions=20"]
+
+  supernode-19:
+    <<: *supernode
+    container_name: supernode-19
+    command: ["--insecure", "--superlink", "superlink:9092", "--node-config", "partition-id=19 num-partitions=20"]

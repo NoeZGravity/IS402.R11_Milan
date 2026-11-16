@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fl5g"
+version = "1.0.0"
+description = "Federated Edge Learning dự báo lưu lượng mạng 5G (Telecom Italia Milan) với Flower + nén mô hình"
+dependencies = [
+    "flwr[simulation]>=1.36.0",
+    "torch>=2.2",
+    "numpy",
+    "pandas",
+    "pyarrow",
+    "scikit-learn",
+    "matplotlib",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.flwr.app]
+publisher = "student"
+fab-include = ["fl5g/**/*.py"]
+
+[tool.flwr.app.components]
+serverapp = "fl5g.server_app:app"
+clientapp = "fl5g.client_app:app"
+
+[tool.flwr.app.config]
+num-server-rounds = 30
+fraction-train = 0.5          # tỉ lệ trạm tham gia mỗi vòng
+local-epochs = 2
+batch-size = 64
+learning-rate = 0.001
+algorithm = "fedavg"          # fedavg | fedprox
+proximal-mu = 0.01
+compress = "none"             # none | fp16 | int8 | int4 | topk:0.1 | topk:0.01 | topk_int8:0.01
+error-feedback = true
+cell = "gru"                  # gru | lstm
+hidden = 64
+layers = 2
+min-nodes = 0                 # 0 = chờ đủ mọi trạm; chạy Docker ít node thì đặt = số node tối thiểu

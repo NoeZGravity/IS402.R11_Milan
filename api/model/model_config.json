@@ -1,0 +1,6 @@
+{
+ "tag": "fedavg_none",
+ "cell": "gru",
+ "hidden": 64,
+ "layers": 2
+}

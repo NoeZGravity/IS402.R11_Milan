@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dự báo lưu lượng 5G – Federated Edge Learning</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1d2430; --muted:#667085; --line:#e4e7ec; --pri:#2e5a88; --ok:#3a8f5c; --warn:#d9822b; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:var(--pri); color:#fff; padding:14px 20px; }
+  header h1 { margin:0; font-size:19px; } header p { margin:4px 0 0; font-size:13px; opacity:.85; }
+  nav { display:flex; gap:4px; padding:0 16px; background:#fff; border-bottom:1px solid var(--line); overflow-x:auto; }
+  nav button { border:0; background:none; padding:12px 14px; font-size:14px; cursor:pointer; color:var(--muted); border-bottom:3px solid transparent; white-space:nowrap; }
+  nav button.on { color:var(--pri); border-bottom-color:var(--pri); font-weight:600; }
+  main { max-width:1100px; margin:0 auto; padding:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:end; }
+  label { font-size:12px; color:var(--muted); display:block; margin-bottom:4px; }
+  input, select { padding:8px 10px; border:1px solid var(--line); border-radius:6px; font-size:14px; min-width:220px; }
+  button.act { background:var(--pri); color:#fff; border:0; border-radius:6px; padding:9px 16px; font-size:14px; cursor:pointer; }
+  button.act:disabled { opacity:.5; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:12px 0; }
+  .stat { border:1px solid var(--line); border-radius:8px; padding:10px; }
+  .stat b { display:block; font-size:20px; } .stat span { font-size:12px; color:var(--muted); }
+  table { width:100%; border-collapse:collapse; font-size:13px; } th, td { padding:7px 8px; border-bottom:1px solid var(--line); text-align:left; }
+  th { background:#f2f4f7; } td.n { text-align:right; font-variant-numeric:tabular-nums; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; } @media (max-width:800px){ .grid2 { grid-template-columns:1fr; } }
+  .muted { color:var(--muted); font-size:13px; } .err { color:#b8443c; font-size:13px; white-space:pre-wrap; }
+  canvas.map { width:100%; max-width:300px; aspect-ratio:1; border:1px solid var(--line); image-rendering:pixelated; }
+  .chart svg { width:100%; height:100%; display:block; } .lg { font-size:12px; margin-top:6px; } .lg span { margin-right:12px; white-space:nowrap; }
+  .hide { display:none; } code { background:#f2f4f7; padding:1px 4px; border-radius:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Dự báo lưu lượng mạng 5G – Federated Edge Learning</h1>
+  <p>Mô hình GRU huấn luyện liên kết trên 20 trạm (dữ liệu Telecom Italia – Milan), phục vụ qua API trên Cloud Run</p>
+</header>
+<nav>
+  <button data-tab="forecast" class="on">Dự báo theo trạm</button>
+  <button data-tab="exp">Kết quả thí nghiệm</button>
+  <button data-tab="lat">Độ trễ theo region</button>
+  <button data-tab="cfg">Cấu hình API</button>
+</nav>
+<main>
+  <!-- ===== Cấu hình ===== -->
+  <section id="cfg" class="hide">
+    <div class="card">
+      <h3>Địa chỉ API theo region</h3>
+      <p class="muted">Dán URL Cloud Run của từng region (ví dụ <code>https://fl5g-api-xxxx-as.a.run.app</code>). Chạy thử trên máy: <code>http://localhost:8080</code>.</p>
+      <div id="cfgRows"></div>
+      <button class="act" id="saveCfg">Lưu</button> <span id="cfgMsg" class="muted"></span>
+    </div>
+  </section>
+
+  <!-- ===== Dự báo ===== -->
+  <section id="forecast">
+    <div class="card">
+      <div class="row">
+        <div><label>Region (API)</label><select id="fRegion"></select></div>
+        <div><label>Trạm (Edge node)</label><select id="fCell"></select></div>
+        <div><label>Tập dữ liệu</label><select id="fSplit"><option value="test">test</option><option value="val">val</option><option value="train">train</option></select></div>
+        <div><button class="act" id="btnPredict">Gửi request dự báo</button></div>
+      </div>
+      <div id="fErr" class="err"></div>
+      <div class="stats">
+        <div class="stat"><span>RMSE (chuẩn hoá)</span><b id="sRmse">–</b></div>
+        <div class="stat"><span>MAE (đơn vị gốc)</span><b id="sMae">–</b></div>
+        <div class="stat"><span>Thời gian suy luận trên server</span><b id="sInf">–</b></div>
+        <div class="stat"><span>Thời gian phản hồi (đo tại trình duyệt)</span><b id="sRtt">–</b></div>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="card"><h3 id="chartTitle">Dự báo so với thực tế</h3><div id="cPred" class="chart" style="height:260px"></div></div>
+      <div class="card"><h3>Vị trí trạm trên lưới Milan (100 × 100)</h3><canvas id="map" class="map" width="100" height="100"></canvas>
+        <p class="muted"><span style="color:#d9822b">■</span> dân cư &nbsp; <span style="color:#2e5a88">■</span> văn phòng &nbsp; <span style="color:#e0245e">■</span> đang chọn</p></div>
+    </div>
+    <div class="card"><h3>Dữ liệu JSON nhận về (đã parse)</h3><pre id="raw" class="muted" style="max-height:200px;overflow:auto"></pre></div>
+  </section>
+
+  <!-- ===== Thí nghiệm ===== -->
+  <section id="exp" class="hide">
+    <div class="card"><div class="row"><div><label>Region (API)</label><select id="eRegion"></select></div><div><button class="act" id="btnExp">Tải kết quả</button></div></div><div id="eErr" class="err"></div></div>
+    <div class="grid2">
+      <div class="card"><h3>RMSE theo vòng giao tiếp</h3><div id="cRound" class="chart" style="height:260px"></div></div>
+      <div class="card"><h3>RMSE theo dung lượng gửi lên (MB)</h3><div id="cBytes" class="chart" style="height:260px"></div></div>
+    </div>
+    <div class="card"><h3>Bảng tổng hợp</h3><div id="eTable" class="muted">Chưa tải.</div></div>
+    <div class="card"><h3>RMSE theo khu vực</h3><div id="cGroup" class="chart" style="height:220px"></div></div>
+  </section>
+
+  <!-- ===== Độ trễ ===== -->
+  <section id="lat" class="hide">
+    <div class="card">
+      <div class="row"><div><label>Số request mỗi region</label><input id="lN" type="number" value="10" min="3" max="50" style="min-width:100px"></div>
+        <div><button class="act" id="btnLat">Đo độ trễ</button></div></div>
+      <p class="muted">Gọi <code>/health</code> lần lượt tới từng region và đo thời gian khứ hồi tại trình duyệt (bỏ request đầu tiên để tránh thời gian khởi động lạnh).</p>
+      <div id="lErr" class="err"></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><h3>Kết quả</h3><div id="lTable" class="muted">Chưa đo.</div></div>
+      <div class="card"><h3>Độ trễ trung vị (ms)</h3><div id="cLat" class="chart" style="height:220px"></div></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const DEFAULT = { "Singapore (asia-southeast1)": "https://fl5g-api-6cxzth3dea-as.a.run.app", "US (us-central1)": "https://fl5g-api-6cxzth3dea-uc.a.run.app", "EU (europe-west1)": "https://fl5g-api-6cxzth3dea-ew.a.run.app", "Máy cục bộ": "http://localhost:8080" };
+let CFG; try { CFG = JSON.parse(localStorage.getItem("fl5g_cfg")) || DEFAULT; } catch (e) { CFG = DEFAULT; }
+const $ = (id) => document.getElementById(id);
+const COLORS = ["#2e5a88", "#d9822b", "#3a8f5c", "#b8443c", "#7a5195", "#6b6b6b", "#1f9eaa", "#a0522d"];
+
+// ---- Tabs ----
+document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("on", x === b));
+  ["forecast", "exp", "lat", "cfg"].forEach((t) => $(t).classList.toggle("hide", t !== b.dataset.tab));
+});
+
+// ---- Cấu hình ----
+function renderCfg() {
+  $("cfgRows").innerHTML = Object.entries(CFG).map(([k, v], i) =>
+    `<div class="row" style="margin-bottom:8px"><div><label>Tên region</label><input id="ck${i}" value="${k}"></div>
+     <div style="flex:1"><label>URL</label><input id="cv${i}" value="${v}" style="width:100%"></div></div>`).join("");
+  const opts = Object.entries(CFG).filter(([, v]) => v).map(([k]) => `<option>${k}</option>`).join("");
+  ["fRegion", "eRegion"].forEach((id) => $(id).innerHTML = opts || "<option>(chưa cấu hình)</option>");
+}
+$("saveCfg").onclick = () => {
+  const n = Object.keys(CFG).length, c = {};
+  for (let i = 0; i < n; i++) { const k = $("ck" + i).value.trim(); if (k) c[k] = $("cv" + i).value.trim().replace(/\/$/, ""); }
+  CFG = c; try { localStorage.setItem("fl5g_cfg", JSON.stringify(c)); } catch (e) {}
+  renderCfg(); $("cfgMsg").textContent = "Đã lưu."; loadCells();
+};
+const api = (region) => CFG[region];
+
+async function getJSON(url, opt) {
+  const t0 = performance.now();
+  const r = await fetch(url, opt);
+  const ms = performance.now() - t0;
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}: ${await r.text()}`);
+  return { data: await r.json(), ms };
+}
+// ---- Thư viện vẽ biểu đồ SVG tối giản (không cần thư viện ngoài) ----
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent, text) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; parent && parent.appendChild(e); return e; }
+const fmt = (v) => Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 1 ? v.toFixed(1) : v.toFixed(3);
+function frame(id, xmin, xmax, ymin, ymax, xlabel, ylabel) {
+  const box = $(id); box.innerHTML = ""; const W = box.clientWidth || 500, H = box.clientHeight || 260;
+  const m = { l: 52, r: 12, t: 10, b: 36 }, svg = el("svg", { viewBox: `0 0 ${W} ${H}` }, box);
+  if (ymax === ymin) { ymax += 1; ymin -= 1; } if (xmax === xmin) xmax += 1;
+  const X = (v) => m.l + (v - xmin) / (xmax - xmin) * (W - m.l - m.r), Y = (v) => H - m.b - (v - ymin) / (ymax - ymin) * (H - m.t - m.b);
+  for (let k = 0; k <= 4; k++) { const v = ymin + (ymax - ymin) * k / 4; el("line", { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: "#e4e7ec" }, svg); el("text", { x: m.l - 6, y: Y(v) + 4, "text-anchor": "end", "font-size": 11, fill: "#667085" }, svg, fmt(v)); }
+  if (xlabel !== null) for (let k = 0; k <= 4; k++) { const v = xmin + (xmax - xmin) * k / 4; el("text", { x: X(v), y: H - m.b + 14, "text-anchor": "middle", "font-size": 11, fill: "#667085" }, svg, fmt(v)); }
+  if (xlabel) el("text", { x: (W + m.l) / 2, y: H - 4, "text-anchor": "middle", "font-size": 11, fill: "#667085" }, svg, xlabel);
+  if (ylabel) el("text", { x: 12, y: (H - m.b) / 2, transform: `rotate(-90 12 ${(H - m.b) / 2})`, "text-anchor": "middle", "font-size": 11, fill: "#667085" }, svg, ylabel);
+  return { svg, X, Y, W, H, m };
+}
+function legend(id, items) {
+  let d = $(id + "_lg"); if (!d) { d = document.createElement("div"); d.id = id + "_lg"; d.className = "lg"; $(id).after(d); }
+  d.innerHTML = items.map(([n, c, dash]) => `<span><i style="display:inline-block;width:16px;height:0;border-top:3px ${dash ? "dashed" : "solid"} ${c};vertical-align:middle"></i> ${n}</span>`).join("");
+}
+// series: [{name, color, dash, pts:[[x,y],...]}]
+function lineChart(id, series, xlabel, ylabel) {
+  const all = series.flatMap((s) => s.pts).filter((p) => p[1] != null);
+  if (!all.length) { $(id).textContent = "Không có dữ liệu."; return; }
+  const xs = all.map((p) => p[0]), ys = all.map((p) => p[1]);
+  const ymin = Math.min(...ys), ymax = Math.max(...ys), pad = (ymax - ymin) * 0.08;
+  const f = frame(id, Math.min(...xs), Math.max(...xs), ymin - pad, ymax + pad, xlabel, ylabel);
+  series.forEach((s) => el("polyline", { points: s.pts.filter((p) => p[1] != null).map((p) => `${f.X(p[0])},${f.Y(p[1])}`).join(" "), fill: "none", stroke: s.color, "stroke-width": 2, "stroke-dasharray": s.dash ? "5 3" : "" }, f.svg));
+  legend(id, series.map((s) => [s.name, s.color, s.dash]));
+}
+// bars: labels[], groups:[{name,color,values[]}], horizontal không cần – dùng cột đứng
+function barChart(id, labels, groups, ylabel) {
+  const vals = groups.flatMap((g) => g.values).filter((v) => v != null);
+  if (!vals.length) { $(id).textContent = "Không có dữ liệu."; return; }
+  const f = frame(id, 0, labels.length, 0, Math.max(...vals) * 1.15, null, ylabel);
+  const slot = (f.W - f.m.l - f.m.r) / labels.length, bw = slot * 0.7 / groups.length;
+  labels.forEach((lb, i) => {
+    groups.forEach((g, j) => { const v = g.values[i]; if (v == null) return; const x = f.m.l + i * slot + slot * 0.15 + j * bw;
+      el("rect", { x, y: f.Y(v), width: bw - 2, height: f.Y(0) - f.Y(v), fill: g.color }, f.svg);
+      el("text", { x: x + bw / 2 - 1, y: f.Y(v) - 3, "text-anchor": "middle", "font-size": 10, fill: "#1d2430" }, f.svg, fmt(v)); });
+    el("text", { x: f.m.l + (i + 0.5) * slot, y: f.H - f.m.b + 14, "text-anchor": "middle", "font-size": 11, fill: "#667085" }, f.svg, lb.length > 18 ? lb.slice(0, 17) + "…" : lb);
+  });
+  if (groups.length > 1) legend(id, groups.map((g) => [g.name, g.color]));
+}
+
+// ---- Dự báo ----
+let CELLS = [];
+async function loadCells() {
+  const base = api($("fRegion").value); if (!base) return;
+  try {
+    const { data } = await getJSON(`${base}/cells`);
+    CELLS = data;
+    $("fCell").innerHTML = data.map((c) => `<option value="${c.index}">#${c.index} – ô ${c.cell} – ${c.group}</option>`).join("");
+    drawMap(); $("fErr").textContent = "";
+  } catch (e) { $("fErr").textContent = "Không tải được danh sách trạm: " + e.message; }
+}
+function drawMap() {
+  const ctx = $("map").getContext("2d"); ctx.fillStyle = "#f2f4f7"; ctx.fillRect(0, 0, 100, 100);
+  const sel = Number($("fCell").value);
+  CELLS.forEach((c) => {
+    ctx.fillStyle = c.index === sel ? "#e0245e" : (c.group.startsWith("Dân") ? "#d9822b" : "#2e5a88");
+    const s = c.index === sel ? 3 : 2; ctx.fillRect(c.col - 1, 99 - c.row - 1, s, s);
+  });
+}
+$("fRegion").onchange = loadCells; $("fCell").onchange = drawMap;
+$("btnPredict").onclick = async () => {
+  const base = api($("fRegion").value); const i = $("fCell").value; if (!base || i === "") return;
+  $("btnPredict").disabled = true; $("fErr").textContent = "";
+  try {
+    const { data, ms } = await getJSON(`${base}/predict?cell_index=${i}&split=${$("fSplit").value}`);
+    $("sRmse").textContent = data.rmse_norm.toFixed(4);
+    $("sMae").textContent = data.mae.toFixed(2);
+    $("sInf").textContent = data.inference_ms.toFixed(2) + " ms";
+    $("sRtt").textContent = ms.toFixed(0) + " ms";
+    $("chartTitle").textContent = `Ô ${data.cell} (${data.group}) – ${data.n} giờ – region ${data.region}`;
+    $("raw").textContent = JSON.stringify({ ...data, predicted: data.predicted.slice(0, 5).concat(["…"]), actual: data.actual.slice(0, 5).concat(["…"]) }, null, 1);
+    lineChart("cPred", [
+      { name: "Thực tế", color: "#6b6b6b", pts: data.actual.map((v, k) => [k + 1, v]) },
+      { name: "Dự báo (FL)", color: "#2e5a88", dash: true, pts: data.predicted.map((v, k) => [k + 1, v]) }], "Giờ tiếp theo", "Internet activity");
+  } catch (e) { $("fErr").textContent = "Lỗi: " + e.message; }
+  $("btnPredict").disabled = false;
+};
+
+// ---- Thí nghiệm ----
+$("btnExp").onclick = async () => {
+  const base = api($("eRegion").value); if (!base) return;
+  try {
+    const { data } = await getJSON(`${base}/experiments`);
+    if (!data.length) { $("eTable").textContent = "API chưa có kết quả thí nghiệm."; return; }
+    const base0 = (data.find((r) => r.tag === "fedavg_none") || data[0]).uplink_MB;
+    $("eTable").innerHTML = `<table><tr><th>Thí nghiệm</th><th>RMSE</th><th>RMSE dân cư</th><th>RMSE văn phòng</th><th>Uplink MB</th><th>Downlink MB</th><th>Tỉ lệ nén</th></tr>` +
+      data.map((r) => `<tr><td>${r.tag}</td><td class="n">${r.final_rmse?.toFixed(4)}</td><td class="n">${r.rmse_dan_cu?.toFixed(4) ?? "–"}</td><td class="n">${r.rmse_van_phong?.toFixed(4) ?? "–"}</td>
+        <td class="n">${r.uplink_MB?.toFixed(2)}</td><td class="n">${r.downlink_MB?.toFixed(2)}</td><td class="n">×${(base0 / r.uplink_MB).toFixed(1)}</td></tr>`).join("") + "</table>";
+    lineChart("cRound", data.map((r, k) => ({ name: r.tag, color: COLORS[k % COLORS.length], pts: r.rounds.map((x, j) => [x, r.rmse[j]]) })), "Vòng", "RMSE");
+    lineChart("cBytes", data.map((r, k) => ({ name: r.tag, color: COLORS[k % COLORS.length], pts: r.uplink_cum_MB.map((x, j) => [x, r.rmse[j]]) })), "MB gửi lên (cộng dồn)", "RMSE");
+    barChart("cGroup", data.map((r) => r.tag), [{ name: "Dân cư", color: "#d9822b", values: data.map((r) => r.rmse_dan_cu) },
+      { name: "Văn phòng", color: "#2e5a88", values: data.map((r) => r.rmse_van_phong) }], "RMSE");
+    $("eErr").textContent = "";
+  } catch (e) { $("eErr").textContent = "Lỗi: " + e.message; }
+};
+
+// ---- Độ trễ ----
+$("btnLat").onclick = async () => {
+  const N = Math.max(3, Number($("lN").value) || 10); const rows = [];
+  $("btnLat").disabled = true; $("lErr").textContent = "";
+  for (const [name, base] of Object.entries(CFG)) {
+    if (!base) continue;
+    const t = [];
+    try {
+      await getJSON(`${base}/health`);                         // khởi động lạnh, bỏ qua
+      for (let k = 0; k < N; k++) t.push((await getJSON(`${base}/health?_=${Date.now()}`, { cache: "no-store" })).ms);
+      t.sort((a, b) => a - b);
+      rows.push({ name, min: t[0], med: t[Math.floor(t.length / 2)], max: t[t.length - 1] });
+    } catch (e) { $("lErr").textContent += `${name}: ${e.message}\n`; }
+  }
+  $("lTable").innerHTML = `<table><tr><th>Region</th><th>Min (ms)</th><th>Trung vị (ms)</th><th>Max (ms)</th></tr>` +
+    rows.map((r) => `<tr><td>${r.name}</td><td class="n">${r.min.toFixed(0)}</td><td class="n">${r.med.toFixed(0)}</td><td class="n">${r.max.toFixed(0)}</td></tr>`).join("") + "</table>";
+  barChart("cLat", rows.map((r) => r.name), [{ name: "Trung vị (ms)", color: "#3a8f5c", values: rows.map((r) => r.med) }], "ms");
+  $("btnLat").disabled = false;
+};
+
+renderCfg(); loadCells();
+</script>
+</body>
+</html>
